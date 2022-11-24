@@ -1,0 +1,6 @@
+.gradle
+.idea
+**/build/
+!src/**/build/
+logs/
+config.toml
