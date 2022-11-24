@@ -35,7 +35,9 @@ class ServeCommand : CliktCommand(), Logging {
         databaseService = DatabaseService(
             config["DYNAMODB_REGION"] as String,
             config["MEMBERS_TABLE_NAME"] as String,
-            config["TELEGRAM_CHAT_ID_INDEX_NAME"] as String
+            config["FAMILIES_TABLE_NAME"] as String,
+            config["TELEGRAM_CHAT_ID_INDEX_NAME"] as String,
+            config["REMINDER_TIME_INDEX_NAME"] as String,
         )
 
         val bot = bot {

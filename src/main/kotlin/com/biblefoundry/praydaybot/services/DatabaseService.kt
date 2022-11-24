@@ -7,7 +7,9 @@ import org.apache.logging.log4j.kotlin.Logging
 class DatabaseService(
     private val dynamoDbRegion: String,
     private val membersTableName: String,
-    private val telegramChatIdIndexName: String
+    private val familiesTableName: String,
+    private val telegramChatIdIndexName: String,
+    private val reminderTimeIndexName: String
 ) : Logging {
     suspend fun checkUserStatus(phoneNumber: String): UserStatus {
         val keyToGet = mapOf<String, AttributeValue>(
@@ -79,10 +81,53 @@ class DatabaseService(
     suspend fun setUserMemberCount(phoneNumber: String, memberCount: Int) {
         updateUserValue(phoneNumber, "memberCount", AttributeValue.N(memberCount.toString()))
     }
+
+    suspend fun listUsersRegisteredAtTime(reminderTime: String): List<UserRegistration> {
+        val request = QueryRequest {
+            tableName = membersTableName
+            indexName = reminderTimeIndexName
+            keyConditionExpression = "reminderTime = :t"
+            expressionAttributeValues = mapOf(":t" to AttributeValue.S(reminderTime))
+        }
+
+        DynamoDbClient { region = dynamoDbRegion }.use { ddb ->
+            val response = ddb.query(request)
+            return response.items?.filter { item -> item["subscribed"]!!.asBool() }?.map { item ->
+                UserRegistration(
+                    firstName = item["firstName"]!!.asS(),
+                    lastName = item["lastName"]!!.asS(),
+                    subscribed = item["subscribed"]!!.asBool(),
+                    memberCount = item["memberCount"]!!.asN().toInt(),
+                    telegramChatId = item["telegramChatId"]!!.asN().toLong(),
+                )
+            } ?: return emptyList()
+        }
+    }
+
+    suspend fun listFamilies(): List<String>? {
+        val request = ScanRequest {
+            tableName = familiesTableName
+        }
+
+        DynamoDbClient { region = dynamoDbRegion }.use { ddb ->
+            val response = ddb.scan(request)
+            return response.items?.map { item ->
+                item["description"]!!.asS()
+            }
+        }
+    }
 }
 
 data class UserMapping(
     val phoneNumber: String, val telegramChatId: Long
+)
+
+data class UserRegistration(
+    val firstName: String,
+    val lastName: String,
+    val subscribed: Boolean,
+    val memberCount: Int,
+    val telegramChatId: Long,
 )
 
 enum class UserStatus {
