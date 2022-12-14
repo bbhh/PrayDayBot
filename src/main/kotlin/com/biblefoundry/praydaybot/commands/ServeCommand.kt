@@ -21,8 +21,10 @@ import com.github.kotlintelegrambot.entities.keyboard.KeyboardButton
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.kotlin.Logging
 
-private const val MIN_NUM_MEMBERS = 1
-private const val MAX_NUM_MEMBERS = 5
+private const val MIN_MEMBER_COUNT = 1
+private const val MAX_MEMBER_COUNT = 5
+private const val DEFAULT_REMINDER_TIME = "8am"
+private const val DEFAULT_MEMBER_COUNT = 3
 
 class ServeCommand : CliktCommand(), Logging {
     private val config by requireObject<Map<String, Any>>()
@@ -85,13 +87,17 @@ class ServeCommand : CliktCommand(), Logging {
     }
 
     private fun ContactHandlerEnvironment.handleContact() = runBlocking {
-        logger.info("Checking for user with phone number ${contact.phoneNumber}...")
-        val userStatus = databaseService.checkUserStatus(contact.phoneNumber)
+        val phoneNumber = formatPhoneNumber(contact.phoneNumber)
+        logger.info("Checking for user with phone number ${phoneNumber}...")
+
+        val userStatus = databaseService.checkUserStatus(phoneNumber)
         val messageText = when (userStatus) {
             UserStatus.UNRECOGNIZED -> "Sorry, I don't recognize your phone number."
             UserStatus.SUBSCRIBED -> "Hello, ${contact.firstName}! It looks like you've already subscribed, welcome back!"
             UserStatus.UNSUBSCRIBED -> "Hello, ${contact.firstName}! It looks like you haven't subscribed yet, would you like to subscribe?"
         }
+
+        // TODO: If UNSUBSCRIBED, present Yes/No choices in order to subscribe
 
         bot.sendMessage(
             chatId = ChatId.fromId(message.chat.id), text = messageText, replyMarkup = ReplyKeyboardRemove()
@@ -99,8 +105,8 @@ class ServeCommand : CliktCommand(), Logging {
 
         // Save chat ID -> phone number mapping
         if (userStatus != UserStatus.UNRECOGNIZED) {
-            logger.info("Saving chat ID ${message.chat.id} to phone number ${contact.phoneNumber}...")
-            databaseService.saveUserChatId(contact.phoneNumber, message.chat.id)
+            logger.info("Saving chat ID ${message.chat.id} to phone number ${phoneNumber}...")
+            databaseService.saveUserChatId(phoneNumber, message.chat.id)
         }
     }
 
@@ -120,8 +126,41 @@ class ServeCommand : CliktCommand(), Logging {
         TODO("Not yet implemented")
     }
 
-    private fun handleSettingsCommand() {
-        TODO("Not yet implemented")
+    private fun CommandHandlerEnvironment.handleSettingsCommand() = runBlocking {
+        logger.info("Retrieving settings for user with chat ID ${message.chat.id}...")
+
+        val userMapping = databaseService.getUserByChatId(message.chat.id) ?: return@runBlocking
+        val user = databaseService.getUser(userMapping.phoneNumber) ?: return@runBlocking
+
+        // If not subscribed, send quick message
+        if (!user.subscribed) {
+            bot.sendMessage(
+                chatId = ChatId.fromId(message.chat.id),
+                text = "You're currently not subscribed to receive daily prayer reminders."
+            )
+            return@runBlocking
+        }
+
+        // Set default values, if not set before
+        val memberCount: Int
+        if (user.memberCount == null) {
+            memberCount = DEFAULT_MEMBER_COUNT
+            databaseService.setUserMemberCount(userMapping.phoneNumber, memberCount)
+        } else {
+            memberCount = user.memberCount
+        }
+        val reminderTime: String
+        if (user.reminderTime == null) {
+            reminderTime = DEFAULT_REMINDER_TIME
+            databaseService.setUserReminderTime(userMapping.phoneNumber, reminderTime)
+        } else {
+            reminderTime = user.reminderTime
+        }
+
+        bot.sendMessage(
+            chatId = ChatId.fromId(message.chat.id),
+            text = "You're currently subscribed to receive daily prayer reminders for $memberCount members at $reminderTime each day."
+        )
     }
 
     private fun CommandHandlerEnvironment.handleEnableCommand() = runBlocking {
@@ -186,7 +225,7 @@ class ServeCommand : CliktCommand(), Logging {
     }
 
     private fun CommandHandlerEnvironment.handleSetNumberCommand() {
-        val buttons = (MIN_NUM_MEMBERS until MAX_NUM_MEMBERS + 1).map { number ->
+        val buttons = (MIN_MEMBER_COUNT until MAX_MEMBER_COUNT + 1).map { number ->
             listOf(
                 InlineKeyboardButton.CallbackData(
                     text = number.toString(), callbackData = "callbackSetNumber#${number}"
@@ -220,6 +259,10 @@ class ServeCommand : CliktCommand(), Logging {
 
     private fun getRandomAffirmativeExpression(): String {
         return affirmativeExpressions.random()
+    }
+
+    private fun formatPhoneNumber(phoneNumber: String): String {
+        return "+" + phoneNumber.replace("\\D+".toRegex(), "")
     }
 
     companion object {

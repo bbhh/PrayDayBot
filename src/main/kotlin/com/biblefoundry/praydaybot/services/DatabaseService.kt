@@ -70,6 +70,27 @@ class DatabaseService(
         }
     }
 
+    suspend fun getUser(phoneNumber: String): User? {
+        val request = QueryRequest {
+            tableName = membersTableName
+            keyConditionExpression = "id = :id"
+            expressionAttributeValues = mapOf(":id" to AttributeValue.S(phoneNumber))
+        }
+
+        DynamoDbClient { region = dynamoDbRegion }.use { ddb ->
+            val response = ddb.query(request)
+            if (response.count < 1) return null
+            val user = response.items!![0]
+            return User(
+                firstName = user["firstName"]!!.asS(),
+                lastName = user["lastName"]!!.asS(),
+                reminderTime = user["reminderTime"]?.asS(),
+                memberCount = user["memberCount"]?.asN()?.toInt(),
+                subscribed = user["subscribed"]!!.asBool(),
+            )
+        }
+    }
+
     suspend fun setUserSubscribed(phoneNumber: String, subscribed: Boolean) {
         updateUserValue(phoneNumber, "subscribed", AttributeValue.Bool(subscribed))
     }
@@ -117,6 +138,14 @@ class DatabaseService(
         }
     }
 }
+
+data class User(
+    val firstName: String,
+    val lastName: String,
+    val reminderTime: String?,
+    val memberCount: Int?,
+    val subscribed: Boolean
+)
 
 data class UserMapping(
     val phoneNumber: String, val telegramChatId: Long
