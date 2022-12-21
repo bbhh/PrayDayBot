@@ -12,10 +12,7 @@ import com.github.kotlintelegrambot.dispatcher.contact
 import com.github.kotlintelegrambot.dispatcher.handlers.CallbackQueryHandlerEnvironment
 import com.github.kotlintelegrambot.dispatcher.handlers.CommandHandlerEnvironment
 import com.github.kotlintelegrambot.dispatcher.handlers.ContactHandlerEnvironment
-import com.github.kotlintelegrambot.entities.ChatId
-import com.github.kotlintelegrambot.entities.InlineKeyboardMarkup
-import com.github.kotlintelegrambot.entities.KeyboardReplyMarkup
-import com.github.kotlintelegrambot.entities.ReplyKeyboardRemove
+import com.github.kotlintelegrambot.entities.*
 import com.github.kotlintelegrambot.entities.keyboard.InlineKeyboardButton
 import com.github.kotlintelegrambot.entities.keyboard.KeyboardButton
 import kotlinx.coroutines.runBlocking
@@ -56,11 +53,11 @@ class ServeCommand : CliktCommand(), Logging {
                     handleSettingsCommand()
                 }
 
-                command("enable") {
-                    handleEnableCommand()
+                command("subscribe") {
+                    handleSubscribeCommand()
                 }
-                command("disable") {
-                    handleDisableCommand()
+                command("unsubscribe") {
+                    handleUnsubscribeCommand()
                 }
 
                 command("settime") {
@@ -93,18 +90,16 @@ class ServeCommand : CliktCommand(), Logging {
         val userStatus = databaseService.checkUserStatus(phoneNumber)
         val messageText = when (userStatus) {
             UserStatus.UNRECOGNIZED -> "Sorry, I don't recognize your phone number."
-            UserStatus.SUBSCRIBED -> "Hello, ${contact.firstName}! It looks like you've already subscribed, welcome back!"
-            UserStatus.UNSUBSCRIBED -> "Hello, ${contact.firstName}! It looks like you haven't subscribed yet, would you like to subscribe?"
+            UserStatus.SUBSCRIBED -> "Hi ${contact.firstName}! It looks like you've already subscribed, welcome back! To see your current settings, use the /settings command. To unsubscribe, use the /unsubscribe command."
+            UserStatus.UNSUBSCRIBED -> "Hi ${contact.firstName}! It looks like you haven't subscribed yet. To subscribe, use the /subscribe command."
         }
-
-        // TODO: If UNSUBSCRIBED, present Yes/No choices in order to subscribe
 
         bot.sendMessage(
             chatId = ChatId.fromId(message.chat.id), text = messageText, replyMarkup = ReplyKeyboardRemove()
         )
 
         // Save chat ID -> phone number mapping
-        if (userStatus != UserStatus.UNRECOGNIZED) {
+        if (userStatus == UserStatus.SUBSCRIBED) {
             logger.info("Saving chat ID ${message.chat.id} to phone number ${phoneNumber}...")
             databaseService.saveUserChatId(phoneNumber, message.chat.id)
         }
@@ -117,7 +112,8 @@ class ServeCommand : CliktCommand(), Logging {
         )
         bot.sendMessage(
             chatId = ChatId.fromId(message.chat.id),
-            text = "Hello from PrayDay! Please click the \"Share my phone number\" button below to register.",
+            text = "Hello from PrayDay! Please click the <b>Share my phone number</b> button below to register.",
+            parseMode = ParseMode.HTML,
             replyMarkup = keyboardMarkup
         )
     }
@@ -136,7 +132,7 @@ class ServeCommand : CliktCommand(), Logging {
         if (!user.subscribed) {
             bot.sendMessage(
                 chatId = ChatId.fromId(message.chat.id),
-                text = "You're currently not subscribed to receive daily prayer reminders."
+                text = "You're currently not subscribed to receive daily prayer reminders. To subscribe, use the /subscribe command."
             )
             return@runBlocking
         }
@@ -159,30 +155,31 @@ class ServeCommand : CliktCommand(), Logging {
 
         bot.sendMessage(
             chatId = ChatId.fromId(message.chat.id),
-            text = "You're currently subscribed to receive daily prayer reminders for $memberCount members at $reminderTime each day."
+            text = "You're currently subscribed to receive daily prayer reminders for $memberCount members at $reminderTime each day. To change these settings, use the /setnumber or /settime commands."
         )
     }
 
-    private fun CommandHandlerEnvironment.handleEnableCommand() = runBlocking {
-        logger.info("Enabling service for user with chat ID ${message.chat.id}...")
+    private fun CommandHandlerEnvironment.handleSubscribeCommand() = runBlocking {
+        logger.info("Subscribing user with chat ID ${message.chat.id}...")
 
         val userMapping = databaseService.getUserByChatId(message.chat.id) ?: return@runBlocking
         databaseService.setUserSubscribed(userMapping.phoneNumber, true)
 
         bot.sendMessage(
-            chatId = ChatId.fromId(message.chat.id), text = "Hooray! You'll now start receiving daily prayer reminders."
+            chatId = ChatId.fromId(message.chat.id),
+            text = "${getRandomAffirmativeExpression()} You'll now start receiving daily prayer reminders. To see your current settings, use the /settings command. To unsubscribe, use the /unsubscribe command."
         )
     }
 
-    private fun CommandHandlerEnvironment.handleDisableCommand() = runBlocking {
-        logger.info("Disabling service for user with chat ID ${message.chat.id}...")
+    private fun CommandHandlerEnvironment.handleUnsubscribeCommand() = runBlocking {
+        logger.info("Unsubscribing user with chat ID ${message.chat.id}...")
 
         val userMapping = databaseService.getUserByChatId(message.chat.id) ?: return@runBlocking
         databaseService.setUserSubscribed(userMapping.phoneNumber, false)
 
         bot.sendMessage(
             chatId = ChatId.fromId(message.chat.id),
-            text = "Sad to see you go! You'll no longer be receiving daily prayer reminders."
+            text = "Sad to see you go! You'll no longer be receiving daily prayer reminders. To re-subscribe, use the /subscribe command."
         )
     }
 

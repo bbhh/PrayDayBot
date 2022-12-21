@@ -12,7 +12,7 @@ A Telegram bot that allows users to self-register and customize the PrayDay serv
 
 ### Specific
 
-- `/enable` - Enable daily prayer reminders
-- `/disable` - Disable daily prayer reminders
+- `/subscribe` - Subscribe to daily prayer reminders
+- `/unsubscribe` - Unsubscribe from daily prayer reminders
 - `/settime` - Set time to receive daily prayer reminders
 - `/setnumber` - Set number of members to receive each day
