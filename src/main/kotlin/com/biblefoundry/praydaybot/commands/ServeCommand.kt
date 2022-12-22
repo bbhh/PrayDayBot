@@ -99,7 +99,7 @@ class ServeCommand : CliktCommand(), Logging {
         )
 
         // Save chat ID -> phone number mapping
-        if (userStatus == UserStatus.SUBSCRIBED) {
+        if (userStatus != UserStatus.UNRECOGNIZED) {
             logger.info("Saving chat ID ${message.chat.id} to phone number ${phoneNumber}...")
             databaseService.saveUserChatId(phoneNumber, message.chat.id)
         }
